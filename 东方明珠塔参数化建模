@@ -1,0 +1,270 @@
+from pyp3d import *
+
+
+# 定义参数化模型
+class dfmz(Component):
+    # 定义各个参数及其默认值
+    def __init__(self):
+        Component.__init__(self)
+        """
+        建筑总高度463m 
+        主要组成为:下球体、上球体、太空舱球体
+        三立柱 斜撑 斜撑的斜撑 电梯
+        下球体 D50 93m
+        上球体 D45 272.5m
+        上下球体之间为小球体 间隔linespace(144000, 232300, 5)
+        参考1:https://doc.pkpm.cn/docs/python
+        参考2:https://baike.baidu.com/item/%E4%B8%9C%E6%96%B9%E6%98%8E%E7%8F%A0%E5%B9%BF%E6%92%AD%E7%94%B5%E8%A7%86%E5%A1%94/318179
+        参考3:https://zh.wikipedia.org/wiki/%E4%B8%9C%E6%96%B9%E6%98%8E%E7%8F%A0%E5%B9%BF%E6%92%AD%E7%94%B5%E8%A7%86%E5%A1%94
+        """
+        # RGB 混凝土 128,128,118
+        # RGB 红色玻璃 167 / 255, 80 / 255, 101 / 255, 0.7    200 / 255, 80 / 255, 101 / 255, 0.8
+        self["dfmz"] = Attr(None, show=True)
+
+    @export
+    # 模型造型
+    def replace(self):
+
+        # 三立柱:D9 260m? .color(128 / 255, 128 / 255, 118 / 255, 1)
+        lizhu = combine()
+        R = 9237  # 立柱三点成圆的半径
+        for i in [0, 2 / 3 * pi, 4 / 3 * pi]:
+            lizhu.append(trans(Vec3(R * cos(i), R * sin(i), 0)) * Cone(Vec3(0, 0, 0), Vec3(0, 0, 280000), 4500, 4500))
+        lizhu.color(128 / 255, 128 / 255, 118 / 255, 1)
+        # 电梯
+        lizhu.append(self.dianti())
+
+        # 支撑 斜撑:D7 D14*3**0.5/3 + 斜撑的斜撑：
+        xiecheng = combine()  # 斜撑
+        r = 9237  # 立柱三点成圆的半径
+        R = 31 * 3**0.5 * 1000
+        for i in [pi / 3, 2 / 3 * pi + pi / 3, 4 / 3 * pi + pi / 3]:  # 相较立柱扭转60度
+            xiecheng.append(
+                Loft(
+                    trans(Vec3(R * cos(i), R * sin(i), 0)) * scale(0.97 * 7 / 3 * 3**0.5 * 1000) * Section(Arc(2 * pi)),
+                    trans(Vec3(r * cos(i), r * sin(i), 83000)) * scale(0.97 * 7 / 3 * 3**0.5 * 1000) * Section(Arc(2 * pi)),
+                )
+            )
+        xiecheng.color(128 / 255, 128 / 255, 118 / 255, 1)  # 给斜撑上色
+        xiecheng_xiecheng = combine()  # 斜撑的斜撑
+        R = 31465  # 0.555*31 * 3**0.5 * 1000
+        r = 0
+        for i in [pi / 3, 2 / 3 * pi + pi / 3, 4 / 3 * pi + pi / 3]:  # 相较立柱扭转60度
+            xiecheng_xiecheng.append(
+                Loft(
+                    trans(Vec3(R * cos(i), R * sin(i), 0.52 * 83000)) * scale(0.6 * 7 / 3 * 3**0.5 * 1000) * Section(Arc(2 * pi)),
+                    trans(Vec3(r * cos(i), r * sin(i), 0)) * scale(0.6 * 7 / 3 * 3**0.5 * 1000) * Section(Arc(2 * pi)),
+                )
+            )
+        xiecheng_xiecheng.color(128 / 255, 128 / 255, 118 / 255, 1)
+
+        jiedianqiu = combine()  # 斜撑连接处节点球
+        R = 31465  # 节点球围成的圆
+        for i in [pi / 3, 2 / 3 * pi + pi / 3, 4 / 3 * pi + pi / 3]:  # 相较立柱扭转60度
+            jiedianqiu.append(self.qiuti(R * cos(i), R * sin(i), 0.5 * 83000, 5700))  # 布置节点球
+        jiedianqiu.color(233 / 255, 231 / 255, 239 / 255, 1)
+        zhicheng = combine(xiecheng, xiecheng_xiecheng, jiedianqiu)
+
+        # 下球体:D50 93m 颜色 233 / 255, 231 / 255, 239 / 255, 1
+        # xiaqiuti = combine(self.qiuti(0, 0, 93000, 25000))  # 主球体
+        xiaqiuti = combine(self.true_xiaqiuti())
+        # xiaqiuti.color(233 / 255, 231 / 255, 239 / 255, 1)
+        xiaqiuzhuangshi = combine()
+        for i in [-20 * pi / 180, -10 * pi / 180, 10 * pi / 180, 20 * pi / 180]:
+            xiaqiuzhuangshi.append(self.qiuzhuangshi(25.15 * 1000, 93 * 1000, i))  # 品红色玻璃装饰
+        guanchachuang = self.zhenlieguanchuang(25000, -pi / 6, 93000, 36)  # 观察窗
+        shedeng = self.zhenlieshedeng(25000, pi / 6 * 1.4, 93000, 36)  # 射灯
+        xiaqiuti.append(xiaqiuzhuangshi)  # 组合装饰
+        xiaqiuti.append(guanchachuang)  # 组合观察窗
+        xiaqiuti.append(shedeng)  # 组合射灯
+        # xiaqiuti.append(self.qiuzhuangshi(25.2 * 1000, 93 * 1000, 0).color(0.2, 0.2, 0.2, 0.8))  # 组合中间层
+
+        # 上球体:D45 272.5m 颜色 233 / 255, 231 / 255, 239 / 255
+        shangqiuti = combine(self.qiuti(0, 0, 272500, 22500).color(233 / 255, 231 / 255, 239 / 255, 1))
+        shangqiuzhuangshi = combine()
+        for i in linspace(-30 * pi / 180, 70 * pi / 180, 11):  # 小心修改
+            shangqiuzhuangshi.append(self.qiuzhuangshi(22.5 * 1.01 * 1000, 272.5 * 1000, i))
+        shangqiuhuan = Cone(
+            Vec3(0, 0, 272500 + 22500 * sin(-pi / 6)),
+            Vec3(0, 0, 272500 + 22500 * sin(-pi / 6 * 1.2)),
+            1.08 * 22500 * cos(pi / 6 * 1.2),
+            1.05 * 22500 * cos(pi / 6 * 1.1),
+        )
+        shangqiuti.append(shangqiuzhuangshi)
+        shangqiuti.append(shangqiuhuan)
+
+        # 中球体:D12 由一部分酒店和球组成
+        zhongqiuti = combine()
+        lvdian = combine()
+        for i in linspace(144000, 232300, 5):
+            zhongqiuti.append(self.qiuti(0, 0, i, 6000).color(233 / 255, 231 / 255, 239 / 255, 1))
+            lvdian.append(self.hotel(i))  # 布置旅店
+        lvdian.append(self.hotel(0.55 * 93000).color(128 / 255, 128 / 255, 118 / 255, 1))
+        lvdian.append(self.hotel(125000))
+
+        # 最上端：一段 + 太空舱球体D16 342 + 天线
+        yiduan = Cone(Vec3(0, 0, 280000), Vec3(0, 0, 342000), 4500, 3500).color(128 / 255, 128 / 255, 118 / 255, 1)
+        yiduan.color(0.2, 0.2, 0.2, 0.9)
+        taikongcang = combine(self.qiuti(0, 0, 342000, 8000).color(233 / 255, 231 / 255, 239 / 255, 1))
+        for i in linspace(-10 * pi / 180, 10 * pi / 180, 3):  # 10*pi/180的倍数!!!!!!!!!!!!!!!!!!!!!!!!!!
+            taikongcang.append(self.qiuzhuangshi(8.1 * 1000, 342 * 1000, i))
+        tianxian1 = trans(-1500, -1500, 342000) * scale(3000, 3000, 33000) * Cube().color(0.2, 0.2, 0.2, 0.8)  # 方形
+        tianxian2 = Cone(Vec3(0, 0, 375000), Vec3(0, 0, 415000), 1500, 1200)  # 天线
+        tianxian3 = Cone(Vec3(0, 0, 415000), Vec3(0, 0, 463000), 1000, 100)  # 天线
+        liaowangta1 = trans(-2000, -2000, 375000) * scale(4000, 4000, 1500) * Cube()  # 瞭望台
+        liaowangta2 = trans(0, 0, 415000) * scale(1700, 1700, 1500) * Cone()  # 瞭望台
+        zuishangduan = combine(yiduan, taikongcang, tianxian1, tianxian2, tianxian3, liaowangta1, liaowangta2)
+
+        # 组合
+        self["dfmz"] = combine(xiaqiuti, shangqiuti, zuishangduan, lizhu, zhongqiuti, zhicheng, lvdian)
+        # 竣工 made by 王成文泷
+
+    def sanlengtai(self, x, y, z, l, h=100):  # 边长为l高度为h的等边三棱台，位于x,y,z
+        a = trans(x, y, z) * Sweep(
+            scale(l) * Section(Vec3(0, (3**0.5) / 3, 0), Vec3(0.5, -(3**0.5) / 6, 0), Vec3(-0.5, -(3**0.5) / 6, 0)),
+            Line(Vec3(0, 0, 0), Vec3(0, 0, h)),
+        )
+        return a
+
+    def qiuti(self, x, y, z, R):  # 半径为R的球体位于x,y,z
+        a = trans(x, y, z) * scale(R) * Sphere()
+        return a
+
+    def qiuzhuangshi(self, R, H, yangjiao):  # 球装饰:球装饰半径，高度，仰角 玻璃颜色167,80,101
+
+        n = 36  # (100个三角形)
+        a = combine()  # 正三角
+        b = combine()  # 倒三角
+        j = 2 * pi / n  # 分成n份时每份对应的角度
+
+        #############################################################################
+        for i in linspace(0 + j * 0.5, pi * 2 * (n - 1) / n + j * 0.5, n):  # 三点确定截面a
+
+            a.append(
+                Section(
+                    Vec3(R * cos(yangjiao) * cos(0.5 * (2 * i + j)), R * cos(yangjiao) * sin(0.5 * (2 * i + j)), R * sin(yangjiao)),
+                    Vec3(R * cos(yangjiao + 2 * pi / n) * cos(i), R * cos(yangjiao + 2 * pi / n) * sin(i), R * sin(yangjiao + 2 * pi / n)),  # 此点
+                    Vec3(
+                        R * cos(yangjiao + 2 * pi / n) * cos(i + j), R * cos(yangjiao + 2 * pi / n) * sin(i + j), R * sin(yangjiao + 2 * pi / n)
+                    ),  # 下一点
+                )
+            )
+        a.color(167 / 255, 80 / 255, 101 / 255, 0.7)
+        ########################################################################
+        for i in linspace(0, pi * 2 * (n - 1) / n, n):  # 三点确定截面b
+
+            b.append(
+                Section(
+                    Vec3(R * cos(yangjiao) * cos(i), R * cos(yangjiao) * sin(i), R * sin(yangjiao)),  # 此点
+                    Vec3(R * cos(yangjiao) * cos(i + j), R * cos(yangjiao) * sin(i + j), R * sin(yangjiao)),
+                    Vec3(
+                        R * cos(yangjiao + 2 * pi / n) * cos(0.5 * (2 * i + j)),
+                        R * cos(yangjiao + 2 * pi / n) * sin(0.5 * (2 * i + j)),
+                        R * sin(yangjiao + 2 * pi / n),
+                    ),  # 下一点
+                )
+            )
+        b.color(200 / 255, 80 / 255, 101 / 255, 0.8)
+        #######################################################################
+        return rotz(0.5 * yangjiao) * trans(0, 0, H) * combine(a, b)
+
+    def hotel(self, h=0):  # 位于中间的酒店 修饰中间球 由上中下三段构成，中间段有颜色并略微凹陷
+        T = 4800  # 厚度
+        R = 9000  # 圆环半径
+        a = 8000
+        b = 11000
+
+        xia = combine()
+        for i in [
+            0,
+            2 * pi / 3,
+            4 * pi / 3,
+        ]:  # 旋转布置三个长方体，并将中心放到中间
+            xia.append(rotz(i) * trans(0, -0.5 * b, 0) * scale(a, b, T / 3) * Cube())
+        xia.append(
+            Cone(
+                Vec3(0, 0, 0),
+                Vec3(0, 0, T / 3),
+                R,
+                R,
+            )
+        )
+
+        zhong = trans(0, 0, T / 3) * xia  # 给中间段不同的颜色
+        shang = trans(0, 0, 2 * T / 3) * xia
+
+        hotel = combine(
+            xia.color(128 / 255, 128 / 255, 118 / 255, 1),
+            scale(0.98, 0.98, 1) * zhong.color(199 / 255, 21 / 255, 133 / 255, 0.7),
+            shang.color(128 / 255, 128 / 255, 118 / 255, 1),
+        )  # 只缩放中间的xy 不缩放z
+
+        return trans(0, 0, h) * trans(0, 0, -0.5 * T) * hotel
+
+    def zhenlieguanchuang(self, R=30000, yangjiao=pi / 6, h=0, n=25):  # 观察窗：依附球体的半径，仰角，,依附球体的高度，射灯数量
+        r = 800  # 观察窗尺寸
+        zhenlieguanchuang = combine()
+        for i in linspace(0, (n - 1) / n * 2 * pi, n):
+            # 先生成圆片，绕y轴旋转与仰角相符的度数（90-Θ）根据所依附球体的半径移动到相应位置
+            zhenlieguanchuang.append(
+                rotz(i) * trans(R * cos(yangjiao), 0, R * sin(yangjiao)) * roty(pi / 2 - yangjiao) * scale(r) * Section(Arc(2 * pi))
+            )
+
+        return trans(0, 0, h) * zhenlieguanchuang.color(200 / 255, 80 / 255, 101 / 255, 0.5)
+
+    def zhenlieshedeng(self, R=30000, yangjiao=pi / 6, h=0, n=25):  # 射灯：依附球体的半径，仰角，,依附球体的高度，射灯数量
+        r = 500  # 射灯尺寸
+        zhenlieshedeng = combine()
+        for i in linspace(0, (n - 1) / n * 2 * pi, n):
+            # 先生成圆片，绕y轴旋转与仰角相符的度数（90-Θ）根据所依附球体的半径移动到相应位置
+            zhenlieshedeng.append(rotz(i) * trans(R * cos(yangjiao), 0, R * sin(yangjiao)) * roty(pi / 2 - yangjiao) * scale(r) * Cone())
+
+        return trans(0, 0, h) * zhenlieshedeng.color(28 / 255, 28 / 255, 28 / 255, 0.8)
+
+    def true_xiaqiuti(self):  # 更符合实际情况的下球体
+        # 由上下两个半球组成，上下半球相当于由一个球体切割而成，故受到开口角度控制
+        # 添加支撑柱
+        R = 25000
+        yangjiao = 10 * pi / 180
+        kaikoujiaodu = 10 * pi / 180
+        n = 50
+        zhichengzhu_R = 400
+        a = rotx(0.5 * pi) * Section(
+            Vec3(0, R * sin(yangjiao), 0), arc_of_center_points(Vec3(0, 0, 0), Vec3(R * cos(yangjiao), R * sin(yangjiao), 0), Vec3(0, R, 0))
+        )  # 上半
+        b = rotx(0.5 * pi) * Section(
+            Vec3(0, R * sin(yangjiao - kaikoujiaodu), 0),
+            arc_of_center_points(Vec3(0, 0, 0), Vec3(R * cos(yangjiao - kaikoujiaodu), R * sin(yangjiao - kaikoujiaodu), 0), Vec3(0, -R, 0)),
+        )  # 下半
+        sweepLine = Line(Arc(2 * pi))
+        c = Sweep(a, sweepLine).color(233 / 255, 231 / 255, 239 / 255, 1)
+        d = Sweep(b, sweepLine).color(233 / 255, 231 / 255, 239 / 255, 1)
+        zhongxinquyu = Cone(Vec3(0, 0, R * sin(yangjiao)), Vec3(0, 0, R * sin(yangjiao - kaikoujiaodu)), 20000, 20000)
+        zhichengzhu = combine()
+        for i in linspace(0, (n - 1) / n * 2 * pi, n):
+            zhichengzhu.append(
+                trans(Vec3((R - 2 * zhichengzhu_R) * cos(i), (R - 2 * zhichengzhu_R) * sin(i), 0))
+                * Cone(Vec3(0, 0, R * sin(yangjiao)), Vec3(0, 0, R * sin(yangjiao - kaikoujiaodu)), zhichengzhu_R, zhichengzhu_R)
+            )
+
+        return trans(0, 0, 93000) * combine(c, d, zhongxinquyu, zhichengzhu.color())
+
+    def dianti(self):  # 电梯
+        R = 2500
+        T = 200  # 环厚度
+        w = 500  # 宽度
+        H = 85000
+        n = 20
+        a = combine(Cone(Vec3(0, 0, 0), Vec3(0, 0, H), R, R).color(26 / 255, 79 / 255, 163 / 255, 0.1))
+        sweepline = Line(Vec3(0, 0, 0), Vec3(0, 0, T))
+        for i in linspace(0, H, n):
+            a.append(trans(0, 0, i) * Sweep((scale(R) * Section(Arc(2 * pi)) - scale(R - w) * Section(Arc(2 * pi))), sweepline))
+
+        return a
+
+
+# 输出模型
+if __name__ == "__main__":
+    FinalGeometry = dfmz()
+    FinalGeometry.replace()
+    place(FinalGeometry)
